@@ -17,6 +17,7 @@ import { PlaybackNotificationManager } from 'react-native-audio-api';
 import { BANDS, Engine, PRESETS } from './engine';
 
 type Track = { id: string; title: string; channel?: string; duration?: number };
+type Playlist = { id: string; title: string; count?: number };
 
 const fmt = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -31,6 +32,7 @@ export default function App() {
   const [key, setKey] = useState('');
   const [query, setQuery] = useState('');
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [index, setIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -119,22 +121,45 @@ export default function App() {
   };
   const prev = () => playIndex(Math.max(0, indexRef.current - 1));
 
-  const search = async () => {
+  // GET a JSON endpoint on the server; `path` may already contain a query.
+  const getJson = async (path: string, busy: string) => {
     if (!base || !key) {
       setStatus('Önce sunucu adresi ve anahtarı gir (en altta).');
-      return;
+      return null;
     }
-    setStatus('Aranıyor…');
+    setStatus(busy);
     try {
-      const r = await fetch(
-        `${base}/api/search?q=${encodeURIComponent(query)}&key=${encodeURIComponent(key)}`
-      );
+      const sep = path.includes('?') ? '&' : '?';
+      const r = await fetch(`${base}${path}${sep}key=${encodeURIComponent(key)}`);
+      if (r.status === 503) throw new Error('Sunucuda YouTube Music girişi kurulu değil');
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setTracks(await r.json());
+      const data = await r.json();
       setStatus('');
+      return data;
     } catch (e) {
       setStatus(`Hata: ${String(e).slice(0, 120)}`);
+      return null;
     }
+  };
+
+  const search = async () => {
+    const data = await getJson(`/api/search?q=${encodeURIComponent(query)}`, 'Aranıyor…');
+    if (data) setTracks(data);
+  };
+
+  const loadLiked = async () => {
+    const data = await getJson('/api/library/liked', 'Beğendiklerin yükleniyor…');
+    if (data) setTracks(data);
+  };
+
+  const loadPlaylists = async () => {
+    const data = await getJson('/api/library/playlists', 'Listeler yükleniyor…');
+    if (data) setPlaylists(data);
+  };
+
+  const openPlaylist = async (id: string) => {
+    const data = await getJson(`/api/library/playlist/${id}`, 'Liste açılıyor…');
+    if (data) setTracks(data);
   };
 
   // Progress ticker + auto-advance.
@@ -199,6 +224,25 @@ export default function App() {
         </View>
         {!!status && <Text style={s.dim}>{status}</Text>}
       </View>
+
+      <Text style={s.h}>Kitaplığım</Text>
+      <View style={s.row}>
+        <Pressable style={s.btnGhost} onPress={loadLiked}>
+          <Text style={s.btnText}>♥ Beğendiklerim</Text>
+        </Pressable>
+        <Pressable style={s.btnGhost} onPress={loadPlaylists}>
+          <Text style={s.btnText}>☰ Çalma listeleri</Text>
+        </Pressable>
+      </View>
+      {playlists.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+          {playlists.map((p) => (
+            <Pressable key={p.id} style={s.chip} onPress={() => openPlaylist(p.id)}>
+              <Text style={s.btnText}>{p.title}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
 
       <Text style={s.h}>Ara</Text>
       <View style={s.row}>

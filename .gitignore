@@ -6,3 +6,5 @@ android/
 __pycache__/
 *.pyc
 .env
+browser.json
+oauth.json

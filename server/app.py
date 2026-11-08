@@ -58,6 +58,66 @@ def resolve(video_id: str) -> str:
     return url
 
 
+# --- YouTube Music library (optional) ---------------------------------------
+# One-time login: run `ytmusicapi browser` on the server and paste the request
+# headers copied from a logged-in music.youtube.com tab. The resulting
+# browser.json is the login; keep it secret and out of git.
+AUTH_FILE = os.environ.get("YTM_AUTH", "browser.json")
+_ytm = None
+
+
+def ytm():
+    global _ytm
+    if _ytm is None:
+        if not os.path.exists(AUTH_FILE):
+            raise HTTPException(503, "YouTube Music login not set up on the server")
+        from ytmusicapi import YTMusic  # imported lazily: only needed for library
+
+        _ytm = YTMusic(AUTH_FILE)
+    return _ytm
+
+
+def to_track(t: dict) -> dict | None:
+    if not t.get("videoId"):  # unavailable / deleted entries have no id
+        return None
+    artists = t.get("artists") or []
+    return {
+        "id": t["videoId"],
+        "title": t.get("title"),
+        "channel": ", ".join(a["name"] for a in artists if a.get("name")) or None,
+        "duration": t.get("duration_seconds"),
+    }
+
+
+def tracks_of(data: dict) -> list[dict]:
+    return [x for x in map(to_track, data.get("tracks") or []) if x]
+
+
+@app.get("/api/library/playlists")
+def library_playlists(key: str = ""):
+    check_key(key)
+    items = ytm().get_library_playlists(limit=50)
+    return [
+        {"id": p["playlistId"], "title": p.get("title"), "count": p.get("count")}
+        for p in items
+        if p.get("playlistId")
+    ]
+
+
+@app.get("/api/library/liked")
+def library_liked(key: str = ""):
+    check_key(key)
+    return tracks_of(ytm().get_liked_songs(limit=200))
+
+
+@app.get("/api/library/playlist/{playlist_id}")
+def library_playlist(playlist_id: str, key: str = ""):
+    check_key(key)
+    if not re.match(r"^[\w-]+$", playlist_id):
+        raise HTTPException(400, "bad id")
+    return tracks_of(ytm().get_playlist(playlist_id, limit=200))
+
+
 @app.get("/api/search")
 def search(q: str, key: str = ""):
     check_key(key)

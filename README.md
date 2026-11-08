@@ -18,6 +18,21 @@ EQ_TOKEN=<long-random-secret> uvicorn app:app --host 0.0.0.0 --port 8000
 Put it behind HTTPS (Caddy / Cloudflare Tunnel) if you can. Without a token the
 server rejects every request. Keep yt-dlp updated (`pip install -U yt-dlp`).
 
+## YouTube Music library (optional)
+
+Sign-in happens once on the server, not in the app (Google blocks logins inside
+app WebViews). On the server:
+
+1. Open <https://music.youtube.com> in a desktop browser, signed in.
+2. DevTools -> Network -> pick any `browse` request -> copy its request headers.
+3. Run `ytmusicapi browser` in `server/` and paste the headers. This writes
+   `browser.json` (git-ignored; treat it like a password).
+4. Restart the server. The app's "Kitaplığım" buttons now list your liked songs
+   and playlists.
+
+This uses unofficial endpoints, so it can break and carries a small risk for
+the account; a throwaway account is safer than your main one.
+
 ## App
 
 ```bash
